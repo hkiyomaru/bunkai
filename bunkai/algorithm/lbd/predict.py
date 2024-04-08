@@ -114,14 +114,26 @@ class Predictor(object):
                 )
         ds = MyDataset(examples, self.labels, self.bc.max_seq_length, self.tokenizer, False)
 
-        kwargs = {
-            "input_ids": torch.tensor([f.input_ids for f in ds.features], device=self.device),
-            "attention_mask": torch.tensor([f.attention_mask for f in ds.features], device=self.device),
-        }
-        if self.model.base_model_prefix == "bert":  # hotfix
-            kwargs["token_type_ids"] = torch.tensor([f.token_type_ids for f in ds.features], device=self.device)
+        # kwargs = {
+        #     "input_ids": torch.tensor([f.input_ids for f in ds.features], device=self.device),
+        #     "attention_mask": torch.tensor([f.attention_mask for f in ds.features], device=self.device),
+        # }
+        # if self.model.base_model_prefix == "bert":  # hotfix
+        #     kwargs["token_type_ids"] = torch.tensor([f.token_type_ids for f in ds.features], device=self.device)
 
-        predictions = self.model(**kwargs).logits.to("cpu").detach().numpy()
+        # predictions = self.model(**kwargs).logits.to("cpu").detach().numpy()
+        
+        # Perform prediction sequentially
+        predictions = []
+        for feature in ds.features:
+            kwargs = {
+                "input_ids": torch.tensor(feature.input_ids, device=self.device).unsqueeze(0),
+                "attention_mask": torch.tensor(feature.attention_mask, device=self.device).unsqueeze(0),
+            }
+            if self.model.base_model_prefix == "bert":
+                kwargs["token_type_ids"] = torch.tensor(feature.token_type_ids, device=self.device).unsqueeze(0)
+            predictions.append(self.model(**kwargs).logits.to("cpu").detach().numpy())
+        predictions = np.concatenate(predictions, axis=0)
 
         assert isinstance(
             predictions, np.ndarray
